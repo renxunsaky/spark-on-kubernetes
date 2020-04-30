@@ -163,7 +163,7 @@ spark-pi-1588281257099-exec-2   1/1     Running     0          13s
 spark-pi-1588281257172-exec-3   1/1     Running     0          13s
 ```
 
-##Debugging
+## Debugging
 If there is any error or if the driver is not launched, we can use kubectl to get more hints
 ```
  xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get node
