@@ -46,9 +46,9 @@ xunren@Xuns-MBP ~/workspace/spark $ curl -s -k https://www-eu.apache.org/dist/sp
 xunren@Xuns-MBP ~/workspace/spark $ ll
 total 327920
 -rw-r--r--  1 xunren  staff   160M Apr 28 23:47 spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP ~/workspace/k8s tar xvfz spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP  ~/workspace/k8s  rm -f spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP  ~/workspace/k8s  cd spark-2.4.5-bin-hadoop2.7
+xunren@Xuns-MBP ~/workspace/spark tar xvfz spark-2.4.5-bin-hadoop2.7.tgz
+xunren@Xuns-MBP  ~/workspace/spark  rm -f spark-2.4.5-bin-hadoop2.7.tgz
+xunren@Xuns-MBP  ~/workspace/spark  cd spark-2.4.5-bin-hadoop2.7
 ```
 * Build Image
 
@@ -97,7 +97,7 @@ KubeDNS is running at https://kubernetes.docker.internal:6443/api/v1/namespaces/
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
 
-Submit the job:
+Submit the job(here we **don't need** to specify the schema of jar file as local:///path_to_jar as documentation described):
 ```
 bin/spark-submit \
     --master k8s://https://kubernetes.docker.internal:6443 \
@@ -105,7 +105,7 @@ bin/spark-submit \
     --name spark-pi \
     --class org.apache.spark.examples.SparkPi \
     --conf spark.executor.instances=2 \
-    --conf spark.kubernetes.container.image=k8s/spark \
+    --conf spark.kubernetes.container.image=renxunsaky/spark \
     --conf spark.executor.memory=512m --conf spark.driver.memory=512m \
     /opt/spark/examples/jars/spark-examples_2.11-2.4.5.jar
 ```
@@ -151,7 +151,8 @@ xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ bin/spark-submit
     --class org.apache.spark.examples.SparkPi \
     --conf spark.executor.instances=3 \
     --conf spark.kubernetes.container.image=renxunsaky/spark \
-    --conf spark.executor.memory=512m \/Users/xunren/workspace/spark/spark-2.4.5-bin-hadoop2.7/examples/jars/spark-examples_2.11-2.4.5.jar
+    --conf spark.executor.memory=512m \
+    /Users/xunren/workspace/spark/spark-2.4.5-bin-hadoop2.7/examples/jars/spark-examples_2.11-2.4.5.jar
 ```
 
 Since the driver is not launched in the Kubernetes cluster, we can see only the pods of executors
