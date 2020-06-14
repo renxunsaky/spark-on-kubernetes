@@ -1,0 +1,1 @@
+SPARK_LOG_DIR=/spark-history/logs
