@@ -2,13 +2,13 @@
 We will work on local PC with basic and default configuration provided by Spark
 
 ## Prerequisite:
-* Docker Desktop installed with Kubernetes enabled (I am using 2.2.0.5 Community version, with K8S v1.15.5)
-* Docker configured with at least 6GB memory and 4 CPUs
+* Docker Desktop installed (I am using 2.2.0.5 Community version)
+* Minikube installed and started with at least 4 CPUs (minikube start --cpus 4)
 * Confirm the following commands work fine
 ```
 xunren@Xuns-MBP ~ kubectl cluster-info
-Kubernetes master is running at https://kubernetes.docker.internal:6443
-KubeDNS is running at https://kubernetes.docker.internal:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Kubernetes master is running at https://127.0.0.1:32768
+KubeDNS is running at https://127.0.0.1:32768/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
@@ -42,13 +42,13 @@ The first thing to do is building the Docker image which will be used by K8S to 
 
 * Download Apache Spark
 ```
- xunren@Xuns-MBP ~/workspace/spark $ xunren@Xuns-MBP $ ~/workspace/spark $ curl -sk https://mirror.ibcp.fr/pub/apache/spark/spark-3.0.0-preview2/spark-3.0.0-preview2-bin-hadoop3.2.tgz -o spark-3.0.0-preview2-bin-hadoop3.2.tgz
+ xunren@Xuns-MBP ~/workspace/spark $ xunren@Xuns-MBP $ ~/workspace/spark $ curl -sk http://apache.mirrors.ovh.net/ftp.apache.org/dist/spark/spark-3.0.0/spark-3.0.0-bin-hadoop3.2.tgz
  xunren@Xuns-MBP ~/workspace/spark $ ll
  total 327920
- -rw-r--r--@  1 xunren  staff   255M May  1 23:26 spark-3.0.0-preview2-bin-hadoop3.2.tar
- xunren@Xuns-MBP $ ~/workspace/spark $ tar xvf spark-3.0.0-preview2-bin-hadoop3.2.tar
- xunren@Xuns-MBP $ ~/workspace/spark $ rm spark-3.0.0-preview2-bin-hadoop3.2.tar
- xunren@Xuns-MBP $ ~/workspace/spark $ cd spark-3.0.0-preview2-bin-hadoop3.2
+ -rw-r--r--@  1 xunren  staff   255M May  1 23:26 spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ tar xvf spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ rm spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ cd spark-3.0.0-bin-hadoop3.2
 ```
 * Build Image
 
@@ -85,7 +85,7 @@ to specify the desired UID.
 
 * Check the images
 ```
-  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-preview2-bin-hadoop3.2 $ docker images
+  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ docker images
  REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
  spark3/spark                         latest              06c7c9252a91        4 seconds ago       609MB
 ```
@@ -94,7 +94,7 @@ In version 3.x, if we want to build PySpark image or SparkR image, you could ind
 ```
  ./bin/docker-image-tool.sh -r spark3 -p kubernetes/dockerfiles/spark/bindings/python/Dockerfile build
 
-  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-preview2-bin-hadoop3.2 $ docker images
+  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ docker images
  REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
  spark3/spark-py                      latest              e84ea127027d        29 seconds ago      1.08GB
  spark3/spark                         latest              06c7c9252a91        7 minutes ago       609MB
@@ -107,9 +107,9 @@ should be /opt/spark/...
 
 In order to determine the master of Kubernetes, we can use the command:
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-preview2-bin-hadoop3.2 $ kubectl cluster-info
-Kubernetes master is running at https://kubernetes.docker.internal:6443
-KubeDNS is running at https://kubernetes.docker.internal:6443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl cluster-info
+Kubernetes master is running at https://127.0.0.1:32768
+KubeDNS is running at https://127.0.0.1:32768/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
@@ -117,14 +117,15 @@ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 Submit the job (here we have to specify the schema of jar file as local:///path_to_jar):
 ```
  bin/spark-submit \
-    --master k8s://https://kubernetes.docker.internal:6443 \
+    --master k8s://https://127.0.0.1:32768 \
     --deploy-mode cluster \
     --name spark-pi \
     --class org.apache.spark.examples.SparkPi \
+    --conf spark.kubernetes.container.image.pullPolicy=Never
     --conf spark.executor.instances=2 \
     --conf spark.kubernetes.container.image=spark3/spark \
     --conf spark.executor.memory=512m --conf spark.driver.memory=512m \
-    local:///opt/spark/examples/jars/spark-examples_2.12-3.0.0-preview2.jar
+    local:///opt/spark/examples/jars/spark-examples_2.12-3.0.0.jar
 ```
 
 **Verification:**
@@ -170,14 +171,15 @@ In the client mode, the driver will be launched from where the spark-submit comm
 the main jar by local path here.
 ```
  bin/spark-submit \
-    --master k8s://https://kubernetes.docker.internal:6443 \
+    --master k8s://https://127.0.0.1:32768 \
     --deploy-mode client \
     --name spark-pi \
     --class org.apache.spark.examples.SparkPi \
+    --conf spark.kubernetes.container.image.pullPolicy=Never
     --conf spark.executor.instances=3 \
     --conf spark.kubernetes.container.image=spark3/spark \
     --conf spark.executor.memory=512m \
-    /Users/xunren/workspace/spark/spark-3.0.0-preview2-bin-hadoop3.2/examples/jars/spark-examples_2.12-3.0.0-preview2.jar
+    /Users/xunren/workspace/spark/spark-3.0.0-bin-hadoop3.2/examples/jars/spark-examples_2.12-3.0.0.jar
 ```
 
 Since the driver is not launched in the Kubernetes cluster, we can see only the pods of executors

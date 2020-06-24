@@ -23,7 +23,7 @@ We will try to work it out by the following chapters:
 - [Chapter 5: Spark on Kubernetes on AWS EKS with Airflow](Chapter5)
 - [Chapter 6: Spark on Kubernetes with industrialized configuration(automation, security etc.)](Chapter6)
 
-For each one, I will work on both Spark v2.4.5 and Spark v3.0.0 RC1
+For each one, I will work on both Spark v2.4.5 and Spark v3.0.0
 I suppose you understand the basics of Kubernetes, Docker and Spark
     
      
