@@ -15,8 +15,13 @@
 # limitations under the License.
 #
 
-FROM openjdk:8-jdk-slim
+# Add Tini
+FROM alpine:latest AS tini
+ENV TINI_VERSION v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /usr/bin/tini
+RUN chmod +x /usr/bin/tini
 
+FROM java:openjdk-8-jdk
 ARG spark_jars=jars
 ARG img_path=kubernetes/dockerfiles
 ARG k8s_tests=kubernetes/tests
@@ -29,18 +34,16 @@ ARG k8s_tests=kubernetes/tests
 # docker build -t spark:latest -f kubernetes/dockerfiles/spark/Dockerfile .
 
 RUN set -ex && \
-    apt-get update && \
-    ln -s /lib /lib64 && \
-    apt install -y bash procps tini libc6 libpam-modules libnss3 && \
     mkdir -p /opt/spark && \
     mkdir -p /opt/spark/conf && \
-    mkdir -p /opt/spark/work-dir && \
     touch /opt/spark/RELEASE && \
     rm /bin/sh && \
     ln -sv /bin/bash /bin/sh && \
     echo "auth required pam_wheel.so use_uid" >> /etc/pam.d/su && \
     chgrp root /etc/passwd && chmod ug+rw /etc/passwd && \
     rm -rf /var/cache/apt/*
+
+COPY --from=tini /usr/bin/tini /usr/bin/tini
 
 COPY ${spark_jars} /opt/spark/jars
 COPY bin /opt/spark/bin
@@ -55,6 +58,4 @@ COPY data /opt/spark/data
 ENV SPARK_HOME /opt/spark
 ENV SPARK_NO_DAEMONIZE TRUE
 
-WORKDIR /opt/spark/work-dir
-
-ENTRYPOINT [ "/opt/entrypoint.sh" ]
+WORKDIR /opt/spark/

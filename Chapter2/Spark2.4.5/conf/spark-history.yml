@@ -8,7 +8,7 @@ metadata:
 spec:
   containers:
     - name: history-mt4
-      image: renxunsaky/spark
+      image: spark2/spark
       imagePullPolicy: Never
       command: [ "/opt/spark/sbin/start-history-server.sh" ]
       ports:
@@ -32,6 +32,9 @@ spec:
     app: history-mt4
   ports:
     - protocol: TCP
+      # port: is the abstracted Service port, which can be any port other pods use to access the Service
       port: 8888
+      # targetPort: is the port the container accepts traffic on
       targetPort: 18080
+      nodePort: 30999
   type: NodePort

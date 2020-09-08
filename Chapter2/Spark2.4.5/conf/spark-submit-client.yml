@@ -1,0 +1,79 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: headless-spark-pi-service
+  namespace: trading
+spec:
+  clusterIP: None
+  selector:
+    app: spark-pi-client
+  ports:
+    - protocol: TCP
+      # port: is the abstracted Service port, which can be any port other pods use to access the Service
+      port: 6666
+      # targetPort: is the port the container accepts traffic on
+      targetPort: 49999
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spark-pi-client-driver
+  namespace: trading
+  labels:
+    app: spark-pi-client
+spec:
+  serviceAccountName: adm-devtrade01
+  hostname: spark-pi-driver
+  containers:
+    - name: spark-pi-client-container
+      args:
+        - /opt/spark/bin/spark-submit
+        - --master
+        - k8s://https://192.168.64.2:8443
+        - --deploy-mode
+        - client
+        - --name
+        - spark-pi
+        - --conf
+        - spark.kubernetes.namespace=trading
+        - --conf
+        - spark.kubernetes.container.image=spark2/spark:latest
+        - --conf
+        - spark.kubernetes.authenticate.driver.serviceAccountName=adm-devtrade01
+        - --conf
+        - spark.executor.instances=2
+        - --conf
+        - spark.executor.memory=512m
+        - --conf
+        - spark.driver.memory=512m
+        - --conf
+        #It is important that the driver host should be the name of the headless service
+        - spark.driver.host=headless-spark-pi-service
+        - --conf
+        - spark.kubernetes.executor.deleteOnTermination=false
+        # The following conf is not obligatory but recommended, if set, it should be the name of the pod configured in metadata:name
+        - --conf
+        - spark.kubernetes.driver.pod.name=spark-pi-client-driver
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --class
+        - org.apache.spark.examples.SparkPi
+        - /opt/spark/examples/jars/spark-examples_2.11-2.4.5.jar
+      image: spark2/spark:latest
+      #ports:
+      #  - containerPort: 39999
+      imagePullPolicy: Never
+      volumeMounts:
+        - name: history-volume-mt4
+          mountPath: "/spark-history"
+  volumes:
+    - name: history-volume-mt4
+      persistentVolumeClaim:
+        claimName: history-vc-mt4
+  restartPolicy: Never

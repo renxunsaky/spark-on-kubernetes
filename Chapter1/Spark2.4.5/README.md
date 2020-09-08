@@ -7,8 +7,8 @@ We will work on local PC with basic and default configuration provided by Spark
 * Confirm the following commands work fine
 ```
 xunren@Xuns-MBP ~ kubectl cluster-info
-Kubernetes master is running at https://127.0.0.1:32768
-KubeDNS is running at https://127.0.0.1:32768/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Kubernetes master is running at https://192.168.64.2:8443
+KubeDNS is running at https://192.168.64.2:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
@@ -91,8 +91,8 @@ should be /opt/spark/...
 In order to determine the master of Kubernetes, we can use the command:
 ```
 xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl cluster-info
-Kubernetes master is running at https://127.0.0.1:32768
-KubeDNS is running at https://127.0.0.1:32768/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+Kubernetes master is running at https://192.168.64.2:8443
+KubeDNS is running at https://192.168.64.2:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
@@ -100,7 +100,7 @@ To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 Submit the job(here we **don't need** to specify the schema of jar file as local:///path_to_jar as documentation described):
 ```
 bin/spark-submit \
-    --master k8s://https://kubernetes.docker.internal:6443 \
+    --master k8s://https://192.168.64.2:8443 \
     --deploy-mode cluster \
     --name spark-pi \
     --class org.apache.spark.examples.SparkPi \
@@ -146,7 +146,7 @@ In the client mode, the driver will be launched from where the spark-submit comm
 the main jar by local path here.
 ```
 xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ bin/spark-submit \
-    --master k8s://https://kubernetes.docker.internal:6443 \
+    --master k8s://https://192.168.64.2:8443 \
     --deploy-mode client \
     --name spark-pi \
     --class org.apache.spark.examples.SparkPi \
