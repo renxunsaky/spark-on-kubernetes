@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: history-mt4
+  namespace: trading
+  labels:
+    app: history-mt4
+spec:
+  containers:
+    - name: history-mt4
+      image: spark3/spark
+      imagePullPolicy: Never
+      command: [ "/opt/spark/sbin/start-history-server.sh" ]
+      ports:
+        - containerPort: 18080
+      volumeMounts:
+        - name: history-volume-mt4
+          mountPath: "/spark-history"
+  volumes:
+    - name: history-volume-mt4
+      persistentVolumeClaim:
+        claimName: history-vc-mt4
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: history-mt4
+  namespace: trading
+spec:
+  selector:
+    app: history-mt4
+  ports:
+    - protocol: TCP
+      # port: is the abstracted Service port, which can be any port other pods use to access the Service
+      port: 8888
+      # targetPort: is the port the container accepts traffic on
+      targetPort: 18080
+      nodePort: 30999
+  type: NodePort

@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spark-pi-cluster
+  namespace: trading
+  labels:
+    app: spark-pi-cluster
+spec:
+  serviceAccountName: adm-devtrade01
+  containers:
+    - name: spark-pi-cluster
+      args:
+        - /opt/spark/bin/spark-submit
+        - --master
+        - k8s://https://192.168.64.2:8443
+        - --deploy-mode
+        - cluster
+        - --name
+        - spark-pi
+        - --conf
+        - spark.kubernetes.namespace=trading
+        - --conf
+        - spark.kubernetes.container.image=spark3/spark:latest
+        - --conf
+        - spark.kubernetes.authenticate.driver.serviceAccountName=adm-devtrade01
+        - --conf
+        - spark.executor.instances=2
+        - --conf
+        - spark.executor.memory=512m
+        - --conf
+        - spark.driver.memory=512m
+        - --conf
+        - spark.kubernetes.executor.deleteOnTermination=false
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --class
+        - org.apache.spark.examples.SparkPi
+        - local:///opt/spark/examples/jars/spark-examples_2.12-3.0.0.jar
+      image: spark3/spark:latest
+      imagePullPolicy: Never
+      volumeMounts:
+        - name: history-volume-mt4
+          mountPath: "/spark-history"
+  volumes:
+    - name: history-volume-mt4
+      persistentVolumeClaim:
+        claimName: history-vc-mt4
+  restartPolicy: Never

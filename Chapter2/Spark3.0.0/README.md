@@ -1,14 +1,9 @@
-# Simple Spark on Kubernetes on local PC with some advanced settings
-Based on Chapter1, we will add some advanced configuration, such as
- * volume
- * namespace
- * service account
- * Imperative object configuration
+# Simple Spark on Kubernetes on local PC with default settings
+We will work on local PC with basic and default configuration provided by Spark
 
 ## Prerequisite:
 * Docker Desktop installed (I am using 2.2.0.5 Community version)
 * Minikube installed and started with at least 4 CPUs (minikube start --cpus 4)
-* Since we're going to use Spark History Server, we need to modify the original Dockerfile
 * Confirm the following commands work fine
 ```
 xunren@Xuns-MBP ~ kubectl cluster-info
@@ -44,58 +39,65 @@ Server:
 ## Step 1: Build Docker image
 
 The first thing to do is building the Docker image which will be used by K8S to instantiate the pods
-In this step, we're going to modify the original provided Dockerfile for several reasons:
-1. The original Dockerfile is built from openjdk:8-jre-slim with the update java8_252, we got an error : 
-[java.net.SocketException: Broken pipe (Write failed)](#known-issues)
-2. The image openjdk:8-jre-slim which doesn't contain some commands and libraries, such as "ps" which is used in 
-the script "start-history-server.sh".
-
-`Note:  In any case, if you want to debug the docker image, you could override the entrypoint.sh by doing:
-sudo docker run --entrypoint [new_command] [docker_image] [optional:value]
-ex. sudo docker run -it --entrypoint /bin/bash [docker_image]`
 
 * Download Apache Spark
 ```
-xunren@Xuns-MBP ~/workspace/spark $ curl -s -k https://www-eu.apache.org/dist/spark/spark-2.4.5/spark-2.4.5-bin-hadoop2.7.tgz -o spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP ~/workspace/spark $ ll
-total 327920
--rw-r--r--  1 xunren  staff   160M Apr 28 23:47 spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP ~/workspace/spark tar xvfz spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP  ~/workspace/spark  rm -f spark-2.4.5-bin-hadoop2.7.tgz
-xunren@Xuns-MBP  ~/workspace/spark  cd spark-2.4.5-bin-hadoop2.7
+ xunren@Xuns-MBP ~/workspace/spark $ xunren@Xuns-MBP $ ~/workspace/spark $ curl -sk http://apache.mirrors.ovh.net/ftp.apache.org/dist/spark/spark-3.0.0/spark-3.0.0-bin-hadoop3.2.tgz
+ xunren@Xuns-MBP ~/workspace/spark $ ll
+ total 327920
+ -rw-r--r--@  1 xunren  staff   255M May  1 23:26 spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ tar xvf spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ rm spark-3.0.0-bin-hadoop3.2.tar
+ xunren@Xuns-MBP $ ~/workspace/spark $ cd spark-3.0.0-bin-hadoop3.2
 ```
 * Build Image
 
-The customized Dockerfile could be found [here](build_files/Dockerfile)
-We have added:
-1. /usr/bin/tini : which is used by the entrypoint.sh file
-2. a line to copy the customised conf file for Spark. This file should be put into the downloaded directory "conf" of Spark
-```
-COPY conf/spark-defaults.conf /opt/spark/conf/
-```
-You could find the [example file](build_files/spark/conf/spark-defaults.conf) in this project
-
 Spark ships with a bin/docker-image-tool.sh script that can be used to build and publish the Docker images to use with the Kubernetes backend.  
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ ./bin/docker-image-tool.sh -r spark2 build
+ ./bin/docker-image-tool.sh -r spark3 build
 ```
-But we could build the image with a simple docker command:
+As we're working on our Local PC, we don't need to push the image onto our Docker registry. This script will use the Dockerfile available in the directory "./kubernetes/dockerfiles/spark"
+If we look into the content of this file, we will find that it will copy the contents of the directories ./bin, ./sbin, ./kubernetes/dockerfiles/spark/entrypoint.sh, ./data etc. into /opt/.. 
+of the target image. The entry point will be /opt/entrypoint.sh. So if you encountered some errors or you want to know what it does while starting the pod, you could look into this file. 
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ docker build -t spark2/spark:latest -f kubernetes/dockerfiles/spark/Dockerfile .
+COPY jars /opt/spark/jars
+COPY bin /opt/spark/bin
+COPY sbin /opt/spark/sbin
+COPY kubernetes/dockerfiles/spark/entrypoint.sh /opt/
+COPY examples /opt/spark/examples
+COPY kubernetes/tests /opt/spark/tests
+COPY data /opt/spark/data
+
+ENV SPARK_HOME /opt/spark
+
+WORKDIR /opt/spark/work-dir
+RUN chmod g+w /opt/spark/work-dir
+
+ENTRYPOINT [ "/opt/entrypoint.sh" ]
+
+# Specify the User that the actual main process will run as
+USER ${spark_uid}
 ```
-As we're working on our Local PC, we don't need to push the image onto our Docker registry. But if the image is not built
-in the context of minikube, we need to put it into cache, by doing:
-```
-eval $(minikube docker-env)
-```
+There is a line in addition at last "USER ${spark_uid}" than Spark v2.4.5.
+Images built from the project provided Dockerfiles contain a default USER directive with a default UID of 185. 
+Users building their own images with the provided docker-image-tool.sh script can use the -u <uid> option 
+to specify the desired UID.
 
 * Check the images
 ```
-xunren@Xuns-MBP  ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ docker images
-REPOSITORY                           TAG                    IMAGE ID            CREATED             SIZE
-spark2/spark-r                   latest                 5b8d1f01054b        2 minutes ago       1.11GB
-spark2/spark-py                  latest                 101c8a2a1da2        4 minutes ago       1.06GB
-spark2/spark                     latest                 99b50e3f4c5e        6 minutes ago       556MB
+  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ docker images
+ REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
+ spark3/spark                         latest              06c7c9252a91        4 seconds ago       609MB
+```
+we can see that in Spark3, it builds only the image "spark". But in version 2.4.5, it builds also spark-r and spark-py.
+In version 3.x, if we want to build PySpark image or SparkR image, you could indicate the full path of Dockerfile
+```
+ xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  ./bin/docker-image-tool.sh -r spark3 -u 1001 -f /Users/xunren/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/build_files/Dockerfile build
+
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ docker images
+ REPOSITORY                           TAG                 IMAGE ID            CREATED             SIZE
+ spark3/spark-py                      latest              e84ea127027d        29 seconds ago      1.08GB
+ spark3/spark                         latest              06c7c9252a91        7 minutes ago       609MB
 ```
 
 ## Step 2: Setup Kubernetes environment
@@ -125,8 +127,8 @@ For Spark on Kubernetes, since the driver always creates executor pods in the sa
 rolebinding.rbac.authorization.k8s.io/spark-devtrade01 created
 
  xunren@Xuns-MBP $ ~ $ kubectl get rolebindings -n trading
-NAME               AGE
-spark-devtrade01   73s
+NAME               ROLE                AGE
+spark-devtrade01   ClusterRole/admin   5m25s
 ```
 For the role binding creation, in fact, for the option "serviceaccount", we need to declare the value like 
 $namespace:$serviceaccount. You could remove the last option "-n trading".
@@ -142,13 +144,17 @@ The path "/mnt/data/history/spark" should exist on the K8S node:
 ```
 We will use "minikube ssh" to connect to the node and create the directory
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ minikube ssh
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ minikube ssh
 docker@minikube:~$ sudo mkdir -p /mnt/data/history/spark
 ```
 
 After the host path on the node is created, we can go ahead to create the persistence volume and its claim
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl apply -f storage.yml
+xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl apply -f storage.yml
+persistentvolume/app-v-mt4 created
+persistentvolumeclaim/app-vc-mt4 created
+persistentvolume/history-v-mt4 created
+persistentvolumeclaim/history-vc-mt4 created
 ```
 
 ## Step 4: Create Spark history pod and service
@@ -173,31 +179,24 @@ ENV SPARK_NO_DAEMONIZE TRUE
 
 Finally, we can create the pod and the service
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl apply -f spark-history.yml
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl apply -f spark-history.yml
 pod/history-mt4 created
 service/history-mt4 unchanged
- xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl get pods -n trading
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl get pods -n trading
 NAME          READY   STATUS    RESTARTS   AGE
 history-mt4   1/1     Running   0          3s
 ```
 
 To connect to the Spark History UI on the PC:
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl get all -n trading
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl get all -n trading
 NAME              READY   STATUS    RESTARTS   AGE
-pod/history-mt4   1/1     Running   0          21m
+pod/history-mt4   1/1     Running   0          66s
 
-NAME                  TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
-service/history-mt4   NodePort   10.104.58.194   <none>        8888:30287/TCP   23h
- xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ minikube service history-mt4 --url -n trading
-🏃  Starting tunnel for service history-mt4.
-|-----------|-------------|-------------|------------------------|
-| NAMESPACE |    NAME     | TARGET PORT |          URL           |
-|-----------|-------------|-------------|------------------------|
-| trading   | history-mt4 |             | http://127.0.0.1:53214 |
-|-----------|-------------|-------------|------------------------|
-http://127.0.0.1:53214
-❗  Because you are using a Docker driver on darwin, the terminal needs to be open to run it.
+NAME                  TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+service/history-mt4   NodePort   10.101.140.205   <none>        8888:30999/TCP   66s
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ minikube service history-mt4 --url -n trading
+http://192.168.64.2:30999
 ```
 
 ## Step 5: Launch Spark Pi in cluster mode
@@ -207,7 +206,7 @@ should be /opt/spark/...
 
 In order to determine the master of Kubernetes, we can use the command:
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl cluster-info
+xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl cluster-info
 Kubernetes master is running at https://192.168.64.2:8443
 KubeDNS is running at https://192.168.64.2:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
 
@@ -218,7 +217,7 @@ In the following command, fwe have added the configuration for namespace, servic
 to be "Never" to avoid it pull from remote registry. In order to get the spark history logs, we're using the dedicated
 configuration "spark.kubernetes.driver.volumes..." to mount the persistence volume used by Spark History Server
 ```
-bin/spark-submit \
+ xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  bin/spark-submit \
     --master k8s://https://192.168.64.2:8443 \
     --deploy-mode cluster \
     --name spark-pi \
@@ -227,23 +226,24 @@ bin/spark-submit \
     --conf spark.kubernetes.namespace=trading \
     --conf spark.kubernetes.container.image.pullPolicy=Never \
     --conf spark.executor.instances=2 \
-    --conf spark.kubernetes.container.image=spark2/spark \
+    --conf spark.kubernetes.container.image=spark3/spark \
     --conf spark.executor.memory=512m \
     --conf spark.driver.memory=512m \
     --conf spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history \
     --conf spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4 \
+    local:///opt/spark/examples/jars/spark-examples_2.12-3.0.0.jar
 ```
 
 **Verification:**
 When the command is launched, we could check the pods with the following command
-```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get pods
-NAME                            READY   STATUS              RESTARTS   AGE
-spark-pi-1588280749633-driver   0/1     ContainerCreating   0          2s
+``` 
+xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl get pods -n trading
+NAME                               READY   STATUS              RESTARTS   AGE
+spark-pi-8fa6ec756212aa0d-driver   0/1     ContainerCreating   0          2s
 ```
 we could also check the logs of the containers. With the option "-f", it will show the logs in stream mode
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl log -f spark-pi-1588280749633-driver -n trading
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl log -f spark-pi-8fa6ec756212aa0d-driver -n trading
 log is DEPRECATED and will be removed in a future version. Use logs instead.
 ++ id -u
 + myuid=0
@@ -258,27 +258,26 @@ log is DEPRECATED and will be removed in a future version. Use logs instead.
 When there is no log at all, it is probably that the pod's entrypoint shell is not launched. In this case, we could use
 the command:
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl describe pod spark-pi-1588280749633-driver -n trading
+xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl describe pod spark-pi-1588280749633-driver -n trading
 ```
 
 **Cleanup the driver container in order to release resources**
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get pods -n trading
- NAME                            READY   STATUS      RESTARTS   AGE
- history-mt4                     1/1     Running     8          3d14h
- spark-pi-1593466501409-driver   0/1     Error       0          14h
- spark-pi-1593467912822-driver   0/1     Completed   0          14h
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl get pods -n trading
+ NAME                               READY   STATUS      RESTARTS   AGE
+ history-mt4                        1/1     Running     0          40m
+ spark-pi-8fa6ec756212aa0d-driver   0/1     Completed   0          6m4s
 
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl delete pod spark-pi-1593466501409-driver -n trading
-pod "spark-pi-1593466501409-driver" deleted
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl delete pod spark-pi-8fa6ec756212aa0d-driver -n trading
+pod "spark-pi-8fa6ec756212aa0d-driver" deleted
 ```
 
 The spark-submit command could also be completed with the Imperative object configuration like the file [spark-submit-cluster.yml](conf/spark-submit-cluster.yml)
 
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl apply -f spark-submit-cluster.yml
+xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl apply -f spark-submit-cluster.yml
 pod/spark-pi-cluster created
-  xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get all -n trading
+  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl get all -n trading
  NAME                                READY   STATUS    RESTARTS   AGE
  pod/spark-pi-1599603481121-driver   1/1     Running   0          25s
  pod/spark-pi-1599603481121-exec-1   1/1     Running   0          12s
@@ -296,7 +295,7 @@ it has finished successfully.
 
 ## Step 6: Launch Spark Pi in client mode
 ```
-bin/spark-submit \
+ xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  bin/spark-submit \
     --master k8s://https://192.168.64.2:8443 \
     --deploy-mode client \
     --name spark-pi \
@@ -305,12 +304,12 @@ bin/spark-submit \
     --conf spark.kubernetes.namespace=trading \
     --conf spark.kubernetes.container.image.pullPolicy=Never \
     --conf spark.executor.instances=2 \
-    --conf spark.kubernetes.container.image=spark2/spark \
+    --conf spark.kubernetes.container.image=spark3/spark \
     --conf spark.executor.memory=512m \
     --conf spark.driver.memory=512m \
     --conf spark.eventLog.dir=/tmp \
     --conf spark.history.fs.logDirectory=/tmp \
-    /Users/xunren/workspace/spark/spark-2.4.5-bin-hadoop2.7/examples/jars/spark-examples_2.11-2.4.5.jar
+    /Users/xunren/workspace/spark/spark-3.0.0-bin-hadoop3.2/examples/jars/spark-examples_2.12-3.0.0.jar
 ``` 
 Note: The client mode will not work with the default configuration in  [spark-default.conf](build_files/spark/conf/spark-defaults.conf),
  because it could not find the directory "/spark-history" declared in this file. In order to make it work, 
@@ -318,7 +317,7 @@ Note: The client mode will not work with the default configuration in  [spark-de
 
 The spark-submit command could also be completed with the Imperative object configuration like the file [spark-submit-client.yml](conf/spark-submit-client.yml)
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl apply -f spark-submit-client.yml
+xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf $ kubectl apply -f spark-submit-client.yml
 service/headless-spark-pi-service created
 pod/spark-pi-client-driver created
 ```
@@ -345,11 +344,11 @@ https://github.com/fabric8io/kubernetes-client/issues/2168
 
 If there is any error or if the driver is not launched, we can use kubectl to get more hints
 ```
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get node
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl get node
 NAME             STATUS   ROLES    AGE   VERSION
 docker-desktop   Ready    master   12d   v1.15.5
 
- xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl describe node
+ xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl describe node
 Name:               docker-desktop
 Roles:              master
 Labels:             beta.kubernetes.io/arch=amd64
@@ -384,7 +383,7 @@ Capacity:
  
  Describe pods:
  ```
-  xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl describe pod spark-pi-1588281590000-driver
+  xunren@Xuns-MBP $ ~/workspace/spark/spark-3.0.0-bin-hadoop3.2 $ kubectl describe pod spark-pi-1588281590000-driver
  Name:         spark-pi-1588281590000-driver
  Namespace:    default
  Priority:     0
@@ -478,11 +477,11 @@ Explanation: The PVs are requested by previous pods. Even the PVC is removed, th
 
 Cannot delete the PVC:
 ```
- xunren@Xuns-MBP  ~/workspace/spark/spark-2.4.5-bin-hadoop2.7  kubectl delete pvc history-vc-mt4 -n trading
+ xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  kubectl delete pvc history-vc-mt4 -n trading
 persistentvolumeclaim "history-vc-mt4" deleted
 ^C => we have to stop it because it lasts too much time with finish
 
-xunren@Xuns-MBP  ~/workspace/spark/spark-2.4.5-bin-hadoop2.7  kubectl describe pvc history-vc-mt4 -n trading
+xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  kubectl describe pvc history-vc-mt4 -n trading
 Name:          history-vc-mt4
 Namespace:     trading
 StorageClass:  medium
@@ -507,9 +506,43 @@ PV removal is postponed until the PV is no longer bound to a PVC.
 
 The solution:
 ```
-xunren@Xuns-MBP  ~/workspace/spark/spark-2.4.5-bin-hadoop2.7  kubectl patch pvc history-vc-mt4 -p '{"metadata":{"finalizers":null}}' -n trading
+xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  kubectl patch pvc history-vc-mt4 -p '{"metadata":{"finalizers":null}}' -n trading
 persistentvolumeclaim/history-vc-mt4 patched
 
-xunren@Xuns-MBP  ~/workspace/spark/spark-2.4.5-bin-hadoop2.7  kubectl get pvc -n trading
+xunren@Xuns-MBP  ~/workspace/spark/spark-3.0.0-bin-hadoop3.2  kubectl get pvc -n trading
 No resources found in trading namespace.
 ```
+
+**Q6:**
+
+Cannot start Spark history server:
+```
+xunren@Xuns-MBP  ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark3.0.0/conf   master ●✚  kubectl logs -n trading pod/history-mt4
+mkdir: cannot create directory ‘/opt/spark/logs’: Permission denied
+chown: cannot access '/opt/spark/logs': No such file or directory
+starting org.apache.spark.deploy.history.HistoryServer, logging to /opt/spark/logs/spark--org.apache.spark.deploy.history.HistoryServer-1-history-mt4.out
+/opt/spark/sbin/spark-daemon.sh: line 128: /opt/spark/logs/spark--org.apache.spark.deploy.history.HistoryServer-1-history-mt4.out: No such file or directory
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 136: ps: command not found
+/opt/spark/sbin/spark-daemon.sh: line 144: ps: command not found
+failed to launch: nice -n 0 /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+tail: cannot open '/opt/spark/logs/spark--org.apache.spark.deploy.history.HistoryServer-1-history-mt4.out' for reading: No such file or directory
+full log in /opt/spark/logs/spark--org.apache.spark.deploy.history.HistoryServer-1-history-mt4.out
+```
+
+The reason is:
+Images built from the project provided Dockerfiles contain a default USER directive with a default UID of 185. 
+This means that the resulting images will be running the Spark processes as this UID inside the container.
+
+See: https://spark.apache.org/docs/latest/running-on-kubernetes.html#user-identity
+
+The solution:
+Modify the Dockerfile to create a dedicated group and user "spark" with uid 1001, for example.

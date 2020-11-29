@@ -1,0 +1,221 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trading
+  labels:
+    env: DEV
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: adm-devtrade01
+  namespace: trading
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spark-cluster-role
+  namespace: trading
+rules:
+  - apiGroups: [""] # "" indicates the core API group
+    resources: ["pods"]
+    verbs: ["get", "watch", "list", "create", "delete"]
+  - apiGroups: [""] # "" indicates the core API group
+    resources: ["services"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: [""] # "" indicates the core API group
+    resources: ["configmaps"]
+    verbs: ["get", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spark-devtrade01
+  namespace: trading
+subjects:
+  - kind: ServiceAccount
+    name: adm-devtrade01
+    namespace: trading
+roleRef:
+  kind: ClusterRole
+  name: spark-cluster-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# Application Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: app-v-mt4
+  namespace: trading
+  labels:
+    type: local
+spec:
+  storageClassName: quick
+  volumeMode: Filesystem
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteMany
+  # A hostPath PersistentVolume uses a file or directory on the Node to emulate network-attached storage
+  # In a production cluster, you would not use hostPath. Instead a cluster administrator would provision
+  # a network resource like a Google Compute Engine persistent disk, an NFS share, or an Amazon Elastic Block Store volume.
+  hostPath:
+    path: "/mnt/data/apps"
+
+---
+# Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-vc-mt4
+  namespace: trading
+spec:
+  storageClassName: quick
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Mi
+
+---
+# Spark History Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: history-v-mt4
+  namespace: trading
+  labels:
+    type: local
+spec:
+  storageClassName: medium
+  capacity:
+    storage: 150Mi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/data/history/spark"
+
+---
+# Spark History Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: history-vc-mt4
+  namespace: trading
+spec:
+  storageClassName: medium
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 150Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: history-mt4
+  namespace: trading
+spec:
+  selector:
+    app: history-mt4
+  ports:
+    - protocol: TCP
+      # port: is the abstracted Service port, which can be any port other pods use to access the Service
+      port: 8888
+      # targetPort: is the port the container accepts traffic on
+      targetPort: 18080
+      nodePort: 30999
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-history-server-deployment
+  namespace: trading
+  labels:
+    app: spark-history-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: history-mt4
+  template:
+    metadata:
+      labels:
+        app: history-mt4
+    spec:
+      containers:
+        - name: history-mt4
+          image: spark3/spark
+          imagePullPolicy: Never
+          command: [ "/opt/spark/sbin/start-history-server.sh" ]
+          ports:
+            - containerPort: 18080
+          volumeMounts:
+            - name: history-volume-mt4
+              mountPath: "/spark-history"
+      volumes:
+        - name: history-volume-mt4
+          persistentVolumeClaim:
+            claimName: history-vc-mt4
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: spark-pi-cluster
+  namespace: trading
+  labels:
+    app: spark-pi-cluster
+spec:
+  serviceAccountName: adm-devtrade01
+  containers:
+    - name: spark-pi-cluster
+      args:
+        - /opt/spark/bin/spark-submit
+        - --master
+        - k8s://https://192.168.64.2:8443
+        - --deploy-mode
+        - cluster
+        - --name
+        - spark-pi
+        - --conf
+        - spark.kubernetes.namespace=trading
+        - --conf
+        - spark.kubernetes.container.image=spark3/spark:latest
+        - --conf
+        - spark.kubernetes.authenticate.driver.serviceAccountName=adm-devtrade01
+        - --conf
+        - spark.executor.instances=2
+        - --conf
+        - spark.executor.memory=512m
+        - --conf
+        - spark.driver.memory=512m
+        - --conf
+        - spark.kubernetes.executor.deleteOnTermination=false
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history
+        - --conf
+        - spark.kubernetes.executor.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4
+        - --class
+        - org.apache.spark.examples.SparkPi
+        - local:///opt/spark/examples/jars/spark-examples_2.12-3.0.0.jar
+      image: spark3/spark:latest
+      imagePullPolicy: Never
+      volumeMounts:
+        - name: history-volume-mt4
+          mountPath: "/spark-history"
+  volumes:
+    - name: history-volume-mt4
+      persistentVolumeClaim:
+        claimName: history-vc-mt4
+  restartPolicy: Never

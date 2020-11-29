@@ -149,6 +149,10 @@ docker@minikube:~$ sudo mkdir -p /mnt/data/history/spark
 After the host path on the node is created, we can go ahead to create the persistence volume and its claim
 ```
 xunren@Xuns-MBP $ ~/workspace/spark/spark-on-kubernetes/Chapter2/Spark2.4.5/conf $ kubectl apply -f storage.yml
+persistentvolume/app-v-mt4 created
+persistentvolumeclaim/app-vc-mt4 created
+persistentvolume/history-v-mt4 created
+persistentvolumeclaim/history-vc-mt4 created
 ```
 
 ## Step 4: Create Spark history pod and service
@@ -232,12 +236,13 @@ bin/spark-submit \
     --conf spark.driver.memory=512m \
     --conf spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.mount.path=/spark-history \
     --conf spark.kubernetes.driver.volumes.persistentVolumeClaim.history-volume-mt4.options.claimName=history-vc-mt4 \
+    local:///opt/spark/examples/jars/spark-examples_2.11-2.4.5.jar
 ```
 
 **Verification:**
 When the command is launched, we could check the pods with the following command
 ```
-xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get pods
+xunren@Xuns-MBP $ ~/workspace/spark/spark-2.4.5-bin-hadoop2.7 $ kubectl get pods -n trading
 NAME                            READY   STATUS              RESTARTS   AGE
 spark-pi-1588280749633-driver   0/1     ContainerCreating   0          2s
 ```

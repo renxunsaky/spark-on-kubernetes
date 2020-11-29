@@ -1,0 +1,68 @@
+# Application Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: app-v-mt4
+  namespace: trading
+  labels:
+    type: local
+spec:
+  storageClassName: quick
+  volumeMode: Filesystem
+  capacity:
+    storage: 100Mi
+  accessModes:
+    - ReadWriteMany
+  # A hostPath PersistentVolume uses a file or directory on the Node to emulate network-attached storage
+  # In a production cluster, you would not use hostPath. Instead a cluster administrator would provision
+  # a network resource like a Google Compute Engine persistent disk, an NFS share, or an Amazon Elastic Block Store volume.
+  hostPath:
+    path: "/mnt/data/apps"
+
+---
+# Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-vc-mt4
+  namespace: trading
+spec:
+  storageClassName: quick
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Mi
+
+---
+# Spark History Volume
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: history-v-mt4
+  namespace: trading
+  labels:
+    type: local
+spec:
+  storageClassName: medium
+  capacity:
+    storage: 150Mi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: "/mnt/data/history/spark"
+
+---
+# Spark History Volume Claim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: history-vc-mt4
+  namespace: trading
+spec:
+  storageClassName: medium
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 150Mi
