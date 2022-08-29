@@ -18,12 +18,8 @@ We will try to work it out by the following chapters:
 
 - [Chapter 1: Simple Spark on Kubernetes on local PC with default settings](Chapter1)
 - [Chapter 2: Simple Spark on Kubernetes on local PC with some advanced settings](Chapter2)
-- [Chapter 3: Spark on Kubernetes on local PC with Airflow](Chapter3)
-- [Chapter 4: Spark on Kubernetes on AWS EKS with some advanced settings](Chapter4)
-- [Chapter 5: Spark on Kubernetes on AWS EKS with Airflow](Chapter5)
-- [Chapter 6: Spark on Kubernetes with industrialized configuration(automation, security etc.)](Chapter6)
+- [Chapter 3: AWS EMR on AWS EKS with some advanced settings](Chapter3)
+- [Chapter 4: Spark on AWS EKS](Chapter4)
 
-For each one, I will work on both Spark v2.4.5 and Spark v3.0.0
+For each one (in local PC), I will work on both Spark v2.4.5 and Spark v3.0.0
 I suppose you understand the basics of Kubernetes, Docker and Spark
-    
-     
